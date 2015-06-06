@@ -38,7 +38,18 @@ matrix:
       env:
         - CC_=clang
         - CXX_=clang++
+        - CXXFLAGS="-stdlib=libc++"
 
+    - os: linux
+      compiler: clang
+      addons:
+        apt:
+          sources: ['ubuntu-toolchain-r-test', 'llvm-toolchain-precise-3.5']
+          packages: ['clang-3.5']
+      env:
+        - CC_=clang-3.5
+        - CXX_=clang++-3.5
+        - CXXFLAGS="-stdlib=libc++"
 
     - os: linux
       compiler: clang
@@ -59,7 +70,7 @@ matrix:
       env:
         - CC_=clang-3.6
         - CXX_=clang++-3.6
-
+        - CXXFLAGS="-stdlib=libc++"
 
 # Activate when 3.7 is released and the repository is available
 #    - os: linux
@@ -71,7 +82,7 @@ matrix:
 #      env:
 #        - CC_=clang-37
 #        - CXX_=clang++-3.7
-
+#        - CXXFLAGS="-stdlib=libc++"
 
 # Activate when we are allowed to use MacOS X
 #    - os: osx
