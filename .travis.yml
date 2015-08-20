@@ -3,72 +3,63 @@ language: c++
 matrix:
   include:
     - os: linux
-      env: CXX=clang-3.4
-      addons: &clang34
+      compiler: gcc
+      addons:
         apt:
-          packages:
-            - clang-3.4
-            - libstdc++-5-dev
-          sources:
-            - ubuntu-toolchain-r-test
-            - llvm-toolchain-precise-3.4
+          sources: ['ubuntu-toolchain-r-test']
+          packages: ['g++-4.8']
+      env: COMPILER=g++-4.8
 
     - os: linux
-      env: CXX=clang-3.5
-      addons: &clang35
+      compiler: gcc
+      addons:
         apt:
-          packages:
-            - clang-3.5
-            - libstdc++-5-dev
-          sources:
-            - ubuntu-toolchain-r-test
-            - llvm-toolchain-precise-3.5
+          sources: ['ubuntu-toolchain-r-test']
+          packages: ['g++-4.9']
+      env: COMPILER=g++-4.9
 
     - os: linux
-      env: CXX=clang-3.6
-      addons: &clang36
+      compiler: gcc
+      addons:
         apt:
-          packages:
-            - clang-3.6
-            - libstdc++-5-dev
-          sources:
-            - ubuntu-toolchain-r-test
-            - llvm-toolchain-precise-3.6
+          sources: ['ubuntu-toolchain-r-test']
+          packages: ['g++-5']
+      env: COMPILER=g++-5
 
     - os: linux
-      env: CXX=clang-3.7
-      addons: &clang37
-        apt:
-          packages:
-            - clang-3.7
-            - libstdc++-5-dev
-          sources:
-            - ubuntu-toolchain-r-test
-            - llvm-toolchain-precise
+      compiler: clang
+      env: COMPILER=clang++
 
     - os: linux
-      env: CXX=gcc-4.9
-      addons: &gcc49
+      compiler: clang
+      addons:
         apt:
-          packages:
-            - g++-4.9
-            - libstdc++-4.9-dev
-          sources:
-            - ubuntu-toolchain-r-test
+          sources: ['ubuntu-toolchain-r-test', 'llvm-toolchain-precise-3.5']
+          packages: ['clang-3.5']
+      env: COMPILER=clang++-3.5
 
     - os: linux
-      env: CXX=gcc-5
-      addons: &gcc5
+      compiler: clang
+      addons:
         apt:
-          packages:
-            - g++-5
-            - libstdc++-5-dev
-          sources:
-            - ubuntu-toolchain-r-test
+          sources: ['ubuntu-toolchain-r-test', 'llvm-toolchain-precise-3.6']
+          packages: ['clang-3.6']
+      env: COMPILER=clang++-3.6
 
-    - os: osx
-      env: CXX=clang
+# Activate when 3.7 is released and the repository is available
+#    - os: linux
+#      compiler: clang
+#      addons:
+#        apt:
+#          sources: ['ubuntu-toolchain-r-test', 'llvm-toolchain-precise-3.7']
+#          packages: ['clang-3.7']
+#      env: COMPILER=clang++-3.7
 
-before_script: ./build-v8.sh
-script: CXXFLAGS="-isystem./v8/include -isystem./v8 "$CXXFLAGS LIBRARY_PATH="./v8/lib" make
+# Activate when we are allowed to use MacOS X
+#    - os: osx
+#      compiler: clang
+#      env: COMPILER=clang++
+
+before_script: CXX=$COMPILER ./build-v8.sh
+script: CXX=$COMPILER CXXFLAGS="-isystem./v8/include -isystem./v8 "$CXXFLAGS LIBRARY_PATH="./v8/lib" make
 after_success: LD_LIBRARY_PATH=.:./v8/lib ./v8pp_test -v --run-tests test/console.js test/file.js
