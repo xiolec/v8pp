@@ -78,6 +78,6 @@ matrix:
 #      compiler: clang
 #      env: COMPILER=clang++
 
-before_script: CC=$CC_ CXX=$CXX_ ./build-v8.sh
-script: CC=$CC_ CXX=$CXX_ CXXFLAGS="-isystem./v8/include -isystem./v8 "$CXXFLAGS LIBRARY_PATH="./v8/lib" make
+before_script: CC=$CC_ CXX=$CXX_ LINK=$CXX_ ./build-v8.sh
+script: CC=$CC_ CXX=$CXX_ CXXFLAGS="-isystem./v8/include -isystem./v8 "$CXXFLAGS LIBRARY_PATH="./v8/lib" LINK=$CXX_ make
 after_success: LD_LIBRARY_PATH=.:./v8/lib ./v8pp_test -v --run-tests test/console.js test/file.js
