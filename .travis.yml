@@ -8,15 +8,20 @@ matrix:
         apt:
           sources: ['ubuntu-toolchain-r-test']
           packages: ['g++-4.8']
-      env: COMPILER=g++-4.8
-
+      env:
+        - CXX=g++-4.8
+        - CC=gcc-4.8
+        
     - os: linux
       compiler: gcc
       addons:
         apt:
           sources: ['ubuntu-toolchain-r-test']
           packages: ['g++-4.9']
-      env: COMPILER=g++-4.9
+      env:
+        - CXX=g++-4.9
+        - CC=gcc-4.9
+
 
     - os: linux
       compiler: gcc
@@ -24,11 +29,16 @@ matrix:
         apt:
           sources: ['ubuntu-toolchain-r-test']
           packages: ['g++-5']
-      env: COMPILER=g++-5
+      env:
+        - CXX=g++-5
+        - CC=gcc-5
 
     - os: linux
       compiler: clang
-      env: COMPILER=clang++
+      env:
+        - CXX=clang++
+        - CC=clang
+
 
     - os: linux
       compiler: clang
@@ -36,7 +46,9 @@ matrix:
         apt:
           sources: ['ubuntu-toolchain-r-test', 'llvm-toolchain-precise-3.5']
           packages: ['clang-3.5']
-      env: COMPILER=clang++-3.5
+      env:
+        - CXX=clang++-3.5
+        - CC=clang-3.5
 
     - os: linux
       compiler: clang
@@ -44,7 +56,10 @@ matrix:
         apt:
           sources: ['ubuntu-toolchain-r-test', 'llvm-toolchain-precise-3.6']
           packages: ['clang-3.6']
-      env: COMPILER=clang++-3.6
+      env:
+        - CXX=clang++-3.6
+        - CC=clang-3.6
+
 
 # Activate when 3.7 is released and the repository is available
 #    - os: linux
@@ -53,13 +68,16 @@ matrix:
 #        apt:
 #          sources: ['ubuntu-toolchain-r-test', 'llvm-toolchain-precise-3.7']
 #          packages: ['clang-3.7']
-#      env: COMPILER=clang++-3.7
+#      env:
+#        - CXX=clang++-3.7
+#        - CC=clang-37
+
 
 # Activate when we are allowed to use MacOS X
 #    - os: osx
 #      compiler: clang
 #      env: COMPILER=clang++
 
-before_script: CXX=$COMPILER CXXFLAGS="-w" ./build-v8.sh
-script: CXX=$COMPILER CXXFLAGS="-isystem./v8/include -isystem./v8 "$CXXFLAGS LIBRARY_PATH="./v8/lib" make
+before_script: ./build-v8.sh
+script: CXXFLAGS="-isystem./v8/include -isystem./v8 "$CXXFLAGS LIBRARY_PATH="./v8/lib" make
 after_success: LD_LIBRARY_PATH=.:./v8/lib ./v8pp_test -v --run-tests test/console.js test/file.js
