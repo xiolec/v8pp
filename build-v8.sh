@@ -5,7 +5,7 @@ export PATH=`pwd`/depot_tools:"$PATH"
 fetch --no-history v8
 cd v8
 gclient sync
-make native werror=no library=shared -j8
+make native werror=no library=shared
 mkdir -p lib
 cp out/native/lib.target/*.so lib
 cd ..
