@@ -2,8 +2,8 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros">
-    <V8_INCLUDE>$(SolutionDir)\v8;$(SolutionDir)\v8\include</V8_INCLUDE>
-    <V8_LIB>$(SolutionDir)\v8\lib</V8_LIB>
+    <V8_INCLUDE>$(SolutionDir)\v8;$(SolutionDir)\..\v8\include</V8_INCLUDE>
+    <V8_LIB>$(SolutionDir)\..\v8\build\$(Configuration)\lib</V8_LIB>
   </PropertyGroup>
   <PropertyGroup>
     <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>

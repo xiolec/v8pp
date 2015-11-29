@@ -1,11 +1,3 @@
-//
-// Copyright (c) 2013-2015 Pavel Medvedev. All rights reserved.
-//
-// This file is part of v8pp (https://github.com/pmed/v8pp) project.
-//
-// Distributed under the Boost Software License, Version 1.0. (See accompanying
-// file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
-//
 #ifndef V8PP_CONVERT_HPP_INCLUDED
 #define V8PP_CONVERT_HPP_INCLUDED
 
@@ -19,16 +11,40 @@
 #include <stdexcept>
 #include <type_traits>
 #include <typeinfo>
+#include "v8pp/reference_tracker.h"
+#include "v8pp/any_object.h"
+
+#if defined(WIN32)
+#include <iostream>
+#include <locale>
+#include <codecvt>
+#include <string>
+#endif
 
 namespace v8pp  {
 
 namespace detail {
 
+	template<class T, class U =
+		typename std::remove_cv<
+		typename std::remove_pointer<
+		typename std::remove_reference<
+		typename std::remove_extent<
+		T
+		>::type
+		>::type
+		>::type
+		>::type
+	> struct remove_all : remove_all<U> {};
+	template<class T> struct remove_all<T, T> { typedef T type; };
+
 // A string that converts to Char const * (useful for fusion::invoke)
 template<typename Char>
-struct convertible_string : std::basic_string<Char>
+struct convertible_string : std::basic_string<Char>, ref_debug<convertible_string<Char>>
 {
 	convertible_string(Char const *str, size_t len) : std::basic_string<Char>(str, len) {}
+
+	convertible_string(std::basic_string<Char> &sz) : std::basic_string<Char>(sz.c_str(), sz.size()) {}
 
 	operator Char const*() const { return this->c_str(); }
 };
@@ -53,6 +69,20 @@ struct convert;
 };
 */
 
+template<typename U>
+static typename std::enable_if<std::is_same<U, char>::value, 
+	std::string>::type num_to_string(v8::Handle<v8::Number> &num_val, v8::Isolate *isolate)
+{
+	return std::to_string(static_cast<long>(num_val->NumberValue()));
+}
+
+template<typename U>
+static typename std::enable_if<std::is_same<U, wchar_t>::value,
+	std::wstring> ::type num_to_string(v8::Handle<v8::Number> &num_val, v8::Isolate *isolate)
+{
+	return std::to_wstring(static_cast<long>(num_val->NumberValue()));
+}
+
 // converter specializations for string types
 template<typename Char, typename Traits, typename Alloc>
 struct convert< std::basic_string<Char, Traits, Alloc>>
@@ -65,11 +95,39 @@ struct convert< std::basic_string<Char, Traits, Alloc>>
 
 	static bool is_valid(v8::Isolate*, v8::Handle<v8::Value> value)
 	{
-		return !value.IsEmpty() && value->IsString();
+		return !value.IsEmpty() && (value->IsString() || value->IsNull() || value->IsUndefined() || value->IsNumber()
+			|| value->IsBoolean() || value->IsObject() || value->IsArray());
 	}
 
 	static from_type from_v8(v8::Isolate* isolate, v8::Handle<v8::Value> value)
 	{
+		if (value->IsNull())
+			return detail::convertible_string<Char>("null", 4);
+		if (value->IsUndefined())
+			return detail::convertible_string<Char>("undefined", 9);
+		if (value->IsNumber())
+			return num_to_string<Char>(v8::Handle<v8::Number>::Cast(value), isolate);
+		else if (value->IsBoolean())
+		{
+			if (value->ToBoolean()->BooleanValue())
+				return detail::convertible_string<Char>("true", 4);
+			else
+				return detail::convertible_string<Char>("false", 5);
+		}
+		else if (value->IsArray())
+		{
+			std::basic_string<Char> ret_str;
+			v8::Handle<v8::Array> array_obj = v8::Handle<v8::Array>::Cast(value);
+			for (size_t x = 0; x < array_obj->Length(); x++)
+			{
+				if (x != 0)
+					ret_str += ",";
+				ret_str += from_v8(isolate, array_obj->Get(x));
+			}
+			return ret_str;
+		}
+		else if (value->IsObject())
+			return from_v8(isolate, value->ToString());
 		if (!is_valid(isolate, value))
 		{
 			throw std::invalid_argument("expected String");
@@ -91,8 +149,16 @@ struct convert< std::basic_string<Char, Traits, Alloc>>
 	{
 		if (sizeof(Char) == 1)
 		{
+#if defined(WIN32)
+			std::string test_sz = value;
+			std::wstring winstr;
+			std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+			winstr = converter.from_bytes(test_sz);
+			return v8::String::NewFromTwoByte(isolate, reinterpret_cast<uint16_t const*>(winstr.c_str()), v8::String::kNormalString, winstr.length());
+#else
 			return v8::String::NewFromUtf8(isolate, reinterpret_cast<char const*>(value.data()),
 				v8::String::kNormalString, static_cast<int>(value.length()));
+#endif
 		}
 		else
 		{
@@ -113,11 +179,40 @@ struct convert<Char const*>
 
 	static bool is_valid(v8::Isolate*, v8::Handle<v8::Value> value)
 	{
-		return !value.IsEmpty() && value->IsString();
+		return !value.IsEmpty() && (value->IsString() || value->IsNull() || value->IsUndefined() || value->IsNumber()
+			|| value->IsBoolean() || value->IsObject() || value->IsArray());
 	}
 
 	static from_type from_v8(v8::Isolate* isolate, v8::Handle<v8::Value> value)
 	{
+		if (value->IsNull())
+			return detail::convertible_string<Char>("null", 4);
+		else if (value->IsUndefined())
+			return detail::convertible_string<Char>("undefined", 9);
+		else if (value->IsNumber())
+			return num_to_string<Char>(v8::Handle<v8::Number>::Cast(value), isolate);
+		else if (value->IsBoolean())
+		{
+			if (value->ToBoolean()->BooleanValue())
+				return detail::convertible_string<Char>("true", 4);
+			else
+				return detail::convertible_string<Char>("false", 5);
+		}
+		else if (value->IsArray())
+		{
+			std::basic_string<Char> ret_str;
+			v8::Handle<v8::Array> array_obj = v8::Handle<v8::Array>::Cast(value);
+			for (size_t x = 0; x < array_obj->Length(); x++)
+			{
+				if (x != 0)
+					ret_str += ",";
+				ret_str += from_v8(isolate, array_obj->Get(x));
+			}
+			return ret_str;
+		}
+		else if (value->IsObject())
+			return from_v8(isolate, value->ToString());
+
 		if (!is_valid(isolate, value))
 		{
 			throw std::invalid_argument("expected String");
@@ -425,6 +520,80 @@ struct convert<v8::Local<T>>
 	}
 };
 
+template<>
+struct convert<PersistentValue>
+{
+	using from_type = PersistentValue;
+	using to_type = v8::Local<v8::Value>;
+
+	static bool is_valid(v8::Isolate*, v8::Handle<v8::Value> value)
+	{
+		return !value.IsEmpty();
+	}
+
+	static from_type from_v8(v8::Isolate *isolate, v8::Handle<v8::Value> value)
+	{
+		return PersistentValue(value, isolate);
+	}
+
+	static to_type to_v8(v8::Isolate*, from_type const& value)
+	{
+		return value.get_value();
+	}
+};
+
+template<typename T>
+struct convert<T, typename std::enable_if<std::is_base_of<function_base, T>::value>::type>
+{
+	using from_type = T;
+	using to_type = v8::Local<v8::Function>;
+
+	static bool is_valid(v8::Isolate*, v8::Handle<v8::Value> value)
+	{
+		if (value.IsEmpty())
+			return false;
+		return value->IsFunction();
+	}
+
+	static from_type from_v8(v8::Isolate *isolate, v8::Handle<v8::Value> value)
+	{
+		return T(v8::Handle<v8::Function>::Cast(value), isolate);
+	}
+
+	static to_type to_v8(v8::Isolate *isolate, from_type const& value)
+	{
+		if (value.is_v8_function())
+			return value.get_data()->get_function();
+		if (value.isEmpty())
+			return v8::Handle<v8::Function>();
+
+		return v8::Function::New(isolate, &detail::forward_function<T::std_function_type>,
+			detail::set_external_data(isolate, value.get_cpp_function()));
+	}
+};
+
+template<>
+struct convert<ValueIsolate>
+{
+	using from_type = ValueIsolate;
+	using to_type = v8::Local<v8::Value>;
+
+	static bool is_valid(v8::Isolate*, v8::Handle<v8::Value> value)
+	{
+		return !value.IsEmpty();
+	}
+
+	static from_type from_v8(v8::Isolate *isolate, v8::Handle<v8::Value> value)
+	{
+		return ValueIsolate(value, isolate);
+	}
+
+	static to_type to_v8(v8::Isolate*, from_type const& value)
+	{
+		return value.get_value();
+	}
+};
+
 template<typename T>
 struct convert<v8::Persistent<T>>
 {
@@ -452,7 +621,10 @@ struct is_wrapped_class;
 
 // convert specialization for wrapped user classes
 template<typename T>
-struct is_wrapped_class<T> : std::is_class<T> {};
+struct is_wrapped_class<T>
+	: std::conditional<!std::is_base_of<function_base, T>::value,  
+						std::is_class<T>,
+						std::false_type>::type{};
 
 template<typename T>
 struct is_wrapped_class<v8::Handle<T>, typename std::enable_if<
@@ -506,9 +678,9 @@ struct convert<T, typename std::enable_if<is_wrapped_class<T>::value>::type>
 	using from_type = T&;
 	using to_type = v8::Handle<v8::Object>;
 
-	static bool is_valid(v8::Isolate* isolate, v8::Handle<v8::Value> value)
+	static bool is_valid(v8::Isolate*, v8::Handle<v8::Value> value)
 	{
-		return convert<T*>::is_valid(isolate, value);
+		return !value.IsEmpty() && value->IsObject();
 	}
 
 	static from_type from_v8(v8::Isolate* isolate, v8::Handle<v8::Value> value)
@@ -521,7 +693,7 @@ struct convert<T, typename std::enable_if<is_wrapped_class<T>::value>::type>
 		{
 			return *object;
 		}
-		throw std::runtime_error("expected C++ wrapped object");
+		throw std::runtime_error(std::string("expected C++ wrapped object"));
 	}
 
 	static to_type to_v8(v8::Isolate* isolate, T const& value)

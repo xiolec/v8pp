@@ -1,11 +1,3 @@
-//
-// Copyright (c) 2013-2015 Pavel Medvedev. All rights reserved.
-//
-// This file is part of v8pp (https://github.com/pmed/v8pp) project.
-//
-// Distributed under the Boost Software License, Version 1.0. (See accompanying
-// file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
-//
 #include <iostream>
 #include <algorithm>
 #include <memory>
@@ -20,6 +12,7 @@
 
 void run_tests()
 {
+	void test_functional();
 	void test_utility();
 	void test_context();
 	void test_convert();
@@ -36,6 +29,7 @@ void run_tests()
 
 	std::pair<char const*, void(*)()> tests[] =
 	{
+		{ "test_functional", test_functional },
 		{ "test_utility", test_utility },
 		{ "test_context", test_context },
 		{ "test_convert", test_convert },
@@ -106,10 +100,9 @@ int main(int argc, char const * argv[])
 		}
 	}
 
-	v8::V8::InitializeICU();
-	//v8::V8::InitializeExternalStartupData(argv[0]);
 	std::unique_ptr<v8::Platform> platform(v8::platform::CreateDefaultPlatform());
 	v8::V8::InitializePlatform(platform.get());
+	v8::V8::InitializeICU();
 	v8::V8::Initialize();
 
 	if (do_tests || scripts.empty())

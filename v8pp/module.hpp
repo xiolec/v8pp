@@ -1,11 +1,3 @@
-//
-// Copyright (c) 2013-2015 Pavel Medvedev. All rights reserved.
-//
-// This file is part of v8pp (https://github.com/pmed/v8pp) project.
-//
-// Distributed under the Boost Software License, Version 1.0. (See accompanying
-// file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
-//
 #ifndef V8PP_MODULE_HPP_INCLUDED
 #define V8PP_MODULE_HPP_INCLUDED
 
@@ -14,6 +6,7 @@
 #include "v8pp/config.hpp"
 #include "v8pp/function.hpp"
 #include "v8pp/property.hpp"
+#include "v8pp/reference_tracker.h"
 
 namespace v8pp {
 
@@ -21,7 +14,7 @@ template<typename T>
 class class_;
 
 /// Module (similar to v8::ObjectTemplate)
-class module
+class module : public ref_debug<module>
 {
 public:
 	explicit module(v8::Isolate* isolate)

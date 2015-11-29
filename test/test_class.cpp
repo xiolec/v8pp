@@ -1,11 +1,3 @@
-//
-// Copyright (c) 2013-2015 Pavel Medvedev. All rights reserved.
-//
-// This file is part of v8pp (https://github.com/pmed/v8pp) project.
-//
-// Distributed under the Boost Software License, Version 1.0. (See accompanying
-// file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
-//
 #include "v8pp/class.hpp"
 #include "v8pp/property.hpp"
 
@@ -47,11 +39,6 @@ void test_class()
 	v8::Isolate* isolate = context.isolate();
 	v8::HandleScope scope(isolate);
 
-	check_ex<std::runtime_error>("find unwrapped", [isolate]()
-	{
-		v8pp::class_<struct Z>::find_object(isolate, nullptr);
-	});
-
 	v8pp::class_<X> X_class(isolate);
 	X_class
 		.ctor()
@@ -81,47 +68,18 @@ void test_class()
 	check_eq("X::static_fun(1)", run_script<int>(context, "X.static_fun(3)"), 3);
 
 	check_eq("Y object", run_script<int>(context, "y = new Y(-100); y.konst + y.var"), -1);
-
-	Y y1(-1);
-	v8::Handle<v8::Object> y1_obj = v8pp::class_<Y>::reference_external(context.isolate(), &y1);
-	check("y1", v8pp::from_v8<Y*>(isolate, y1_obj) == &y1);
-	check("y1_obj", v8pp::to_v8(isolate, y1) == y1_obj);
-
-	Y* y2 = new Y(-2);
-	v8::Handle<v8::Object> y2_obj = v8pp::class_<Y>::import_external(context.isolate(), y2);
-	check("y2", v8pp::from_v8<Y*>(isolate, y2_obj) == y2);
-	check("y2_obj", v8pp::to_v8(isolate, y2) == y2_obj);
-
-	v8::Handle<v8::Object> y3_obj = v8pp::class_<Y>::create_object(context.isolate(), -3);
-	Y* y3 = v8pp::class_<Y>::unwrap_object(isolate, y3_obj);
-	check("y3", v8pp::from_v8<Y*>(isolate, y3_obj) == y3);
-	check("y3_obj", v8pp::to_v8(isolate, y3) == y3_obj);
-	check_eq("y3.var", y3->var, -3);
-
+	v8pp::class_<Y>::reference_external(context.isolate(), new Y(-1));
+	
 	run_script<int>(context, "for (i = 0; i < 10; ++i) new Y(i); i");
-	check_eq("Y count", Y::instance_count, 10 + 4); // 10 + y + y1 + y2 + y3
+	check_eq("Y count", Y::instance_count, 10 + 2); // 10, y, and reference_external above
 	run_script<int>(context, "y = null; 0");
 
-	v8pp::class_<Y>::unreference_external(isolate, &y1);
-	check("unref y1", v8pp::from_v8<Y*>(isolate, y1_obj) == nullptr);
-	check("unref y1_obj", v8pp::to_v8(isolate, y1).IsEmpty());
-	y1_obj.Clear();
-
-	v8pp::class_<Y>::destroy_object(isolate, y2);
-	check("unref y2", v8pp::from_v8<Y*>(isolate, y2_obj) == nullptr);
-	check("unref y2_obj", v8pp::to_v8(isolate, y2).IsEmpty());
-	y2_obj.Clear();
-
-	v8pp::class_<Y>::destroy_object(isolate, y3);
-	check("unref y3", v8pp::from_v8<Y*>(isolate, y3_obj) == nullptr);
-	check("unref y3_obj", v8pp::to_v8(isolate, y3).IsEmpty());
-	y3_obj.Clear();
-
+	//v8::Handle<v8::Object> y_obj = v8pp::class_<Y>::import_external(context.isolate(), new Y(-1));
+	//context.set("y_obj", y_obj);
+	//check_eq("undefined", run_script<const char*>(context, "var test_obj = new y_obj; test_obj;"), "undefined");
 	std::string const v8_flags = "--expose_gc";
 	v8::V8::SetFlagsFromString(v8_flags.data(), (int)v8_flags.length());
 	context.isolate()->RequestGarbageCollectionForTesting(v8::Isolate::GarbageCollectionType::kFullGarbageCollection);
 
-	check_eq("Y count after GC", Y::instance_count, 1); // y1
-
-	v8pp::class_<Y>::destroy(isolate);
+	check_eq("Y count after GC", Y::instance_count, 1); // 1 reference_external
 }

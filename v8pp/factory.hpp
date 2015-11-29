@@ -1,23 +1,16 @@
-//
-// Copyright (c) 2013-2015 Pavel Medvedev. All rights reserved.
-//
-// This file is part of v8pp (https://github.com/pmed/v8pp) project.
-//
-// Distributed under the Boost Software License, Version 1.0. (See accompanying
-// file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
-//
 #ifndef V8PP_FACTORY_HPP_INCLUDED
 #define V8PP_FACTORY_HPP_INCLUDED
 
 #include <utility>
 
 #include <v8.h>
+#include "reference_tracker.h"
 
 namespace v8pp {
 
 // Factory that calls C++ constructor
 template<typename T>
-struct factory
+struct factory : public ref_debug<factory<T>>
 {
 	static size_t const object_size = sizeof(T);
 

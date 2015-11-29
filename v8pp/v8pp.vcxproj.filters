@@ -2,6 +2,11 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="context.cpp" />
+    <ClCompile Include="v8pp_debug.cpp" />
+    <ClCompile Include="v8_object_base.cpp" />
+    <ClCompile Include="reference_tracker.cpp" />
+    <ClCompile Include="external_type_data.cpp" />
+    <ClCompile Include="any_object.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="context.hpp" />
@@ -18,5 +23,15 @@
     <ClInclude Include="function.hpp" />
     <ClInclude Include="object.hpp" />
     <ClInclude Include="json.hpp" />
+    <ClInclude Include="v8pp_debug.h" />
+    <ClInclude Include="v8_object_base.h" />
+    <ClInclude Include="v8_object_base_hidden.h" />
+    <ClInclude Include="interceptors.hpp" />
+    <ClInclude Include="member_checkers.h" />
+    <ClInclude Include="reference_tracker.h" />
+    <ClInclude Include="external_type_data.h" />
+    <ClInclude Include="any_object.h" />
+    <ClInclude Include="any_object_hidden.h" />
+    <ClInclude Include="isolate_watcher.h" />
   </ItemGroup>
 </Project>
