@@ -11,6 +11,22 @@
 namespace v8pp
 {
 	namespace detail {
+		struct query_bool_return{};
+
+		template <typename F>
+		using is_bool_return = std::integral_constant<bool,
+			call_from_v8_traits<F>::arg_count == 1 &&
+			std::is_same < bool, typename function_traits<F>::return_type >::value> ;
+
+		template<typename F>
+		using select_query_tag = typename std::conditional<
+			is_string_pointer_return<F>::value,
+				interceptor_string_pointer_return,
+				query_bool_return
+		>::type;
+
+
+
 		namespace property_helpers
 		{
 			template<typename ret_type, typename pure_arg = remove_all<ret_type>::type>
@@ -287,6 +303,18 @@ namespace v8pp
 				if (ret != nullptr)
 					info.GetReturnValue().Set(int32_t(v8::None));
 			}
+
+			static void query_impl(class_type& obj,
+				Query get,
+				Index_or_name name,
+				v8::PropertyCallbackInfo<v8::Integer> const& info, query_bool_return)
+			{
+				v8::Isolate* isolate = info.GetIsolate();
+				using value_type = typename call_from_v8_traits<Query>::template arg_type<0>;
+				bool ret = (obj.*get)(property_helpers::get_c_type<value_type>(name, info.GetIsolate()));
+				if (ret)
+					info.GetReturnValue().Set(int32_t(v8::None));
+			}
 		};
 
 		template<typename Del>
@@ -471,7 +499,7 @@ namespace v8pp
 			if (data.query_)
 			try
 			{
-				detail::query_handlers<Query>::query_impl(*obj, data.query_, index, info, detail::select_getter_tag<Query>());
+				detail::query_handlers<Query>::query_impl(*obj, data.query_, index, info, detail::select_query_tag<Query>());
 			}
 			catch (std::exception const& ex)
 			{

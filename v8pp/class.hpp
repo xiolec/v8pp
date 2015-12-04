@@ -68,7 +68,7 @@ public:
 
 	bool cast(void*& ptr, type_index type) const
 	{
-		if (type == type_ || !ptr)
+		if (type == type_)
 		{
 			return true;
 		}
@@ -231,7 +231,8 @@ private:
 		//  0 - pointer to a wrapped C++ object
 		//  1 - pointer to the class_singleton
 		func->InstanceTemplate()->SetInternalFieldCount(2);
-		v8::Local<v8::ObjectTemplate> obj = v8::ObjectTemplate::New(isolate_, class_function_template());
+		v8::Local<v8::ObjectTemplate> obj = v8::ObjectTemplate::New(isolate_, func);
+		//obj->SetInternalFieldCount(2);
 		obj_temp_.Reset(isolate_, obj);
 		//class_function_template()->Inherit(js_function_template());
 	}
@@ -282,6 +283,41 @@ private:
 
 		return scope.Escape(obj);
 	}
+
+	void insert_into_v8_object(T* object, v8::Handle<v8::Object> &obj, bool destroy_after)
+	{
+		//class_function_template()->GetFunction()->NewInstance();
+		obj->SetAlignedPointerInInternalField(0, object);
+		obj->SetAlignedPointerInInternalField(1, this);
+
+		set_object_on_base(obj, object, object_type_selector<T>());
+
+		persistent<v8::Object> pobj(isolate_, obj);
+		if (destroy_after)
+		{
+			pobj.SetWeak(object,
+				[](v8::WeakCallbackData<v8::Object, T> const& data)
+			{
+				v8::Isolate* isolate = data.GetIsolate();
+				T* object = data.GetParameter();
+				instance(isolate).destroy_object(object);
+			});
+		}
+		else
+		{
+			pobj.SetWeak(object,
+				[](v8::WeakCallbackData<v8::Object, T> const& data)
+			{
+				v8::Isolate* isolate = data.GetIsolate();
+				T* object = data.GetParameter();
+				instance(isolate).template remove_object<T>(isolate, object, nullptr);
+			});
+
+		}
+
+		class_info::add_object(object, std::move(pobj));
+	}
+
 
 public:
 	virtual void remove_class_info(){ delete this; };
@@ -380,6 +416,16 @@ public:
 		return wrap(object, true);
 	}
 
+	void insert_external_object(v8::Handle<v8::Object> &obj, T* object)
+	{
+		return insert_into_v8_object(object, obj, false);
+	}
+
+	void insert_object(v8::Handle<v8::Object> &obj, T* object)
+	{
+		return insert_into_v8_object(object, obj, true);
+	}
+
 	v8::Handle<v8::Object> wrap_object(v8::FunctionCallbackInfo<v8::Value> const& args)
 	{
 		return ctor_? wrap_object(ctor_(args)) : throw std::runtime_error("create is not allowed");
@@ -462,9 +508,16 @@ public:
 		obj_temp_.Reset();
 		class_info::release_v8_objects();
 	}
+	void auto_import(bool auto_import){ auto_imp_ = auto_import; };
+	bool auto_import(){ return auto_imp_; };
+
+	void auto_reference(bool auto_ref){ auto_ref_ = auto_ref; };
+	bool auto_reference(){ return auto_ref_; };
 private:
 	v8::Isolate* isolate_;
 	std::function<T* (v8::FunctionCallbackInfo<v8::Value> const& args)> ctor_;
+	bool auto_ref_ = false;
+	bool auto_imp_ = false;
 
 	v8::UniquePersistent<v8::FunctionTemplate> func_;
 	v8::UniquePersistent<v8::FunctionTemplate> js_func_;
@@ -499,6 +552,19 @@ public:
 		static_assert(std::is_base_of<U, T>::value, "Class U should be base for class T");
 		//TODO: std::is_convertible<T*, U*> and check for duplicates in hierarchy?
 		class_singleton_.template inherit<U>();
+		return *this;
+	}
+
+	///
+	/// Probably can't do this unless the context is created. So cant be set for the global object instance until
+	///	after the context is created.
+	///
+	template<typename T>
+	class_& set(char const* name, class_<T>& cl)
+	{
+		v8::HandleScope scope(isolate_);
+		cl.set_class_name(name, isolate_);
+		class_singleton_.class_function_template()->PrototypeTemplate()->Set(isolate_, name, cl.js_function_template()->GetFunction());
 		return *this;
 	}
 
@@ -572,7 +638,7 @@ public:
 		return *this;
 	}
 
-	/*template<typename GetMethod, typename SetMethod>
+	template<typename GetMethod, typename SetMethod>
 	typename std::enable_if<std::is_member_function_pointer<GetMethod>::value
 		&& std::is_member_function_pointer<SetMethod>::value, class_&>::type
 		set_named_interceptor(property_<GetMethod, SetMethod> prop)
@@ -656,7 +722,7 @@ public:
 		//class_singleton_.class_function_template()->PrototypeTemplate()->
 		has_handler = true;
 		return *this;
-	}*/
+	}
 
 	template<typename Get, typename Set, typename Enum, typename Query, typename Del>
 	class_& set_index_interceptor(interceptor_data<Get, Set, Enum, Query, Del> indexer)
@@ -788,6 +854,38 @@ public:
 		return class_singleton_.js_function_template();
 	}
 
+	v8::Local<v8::ObjectTemplate> get_object_template()
+	{
+		return class_singleton_.object_template();
+	}
+	
+	///
+	/// This will automatically reference an object of v8pp::class_ into v8 without manually importing it
+	///		- Does not delete the object when it is finished.
+	///		- Will only import if the object is not const
+	///
+	class_& set_auto_import(bool auto_import){ class_singleton_.auto_import(auto_import); return *this; };
+
+	///
+	/// Auto References instead of importing
+	///		- will only reference if the object is not const * is returned
+	///
+	class_& set_auto_reference(bool auto_reference){ class_singleton_.auto_reference(auto_reference); return *this; };
+
+	///
+	///	convert function -- this checks if the object is auto-importable - then finds or imports the object
+	///
+	static v8::Handle<v8::Object> convert(v8::Isolate* isolate, T* ext)
+	{
+		detail::class_singleton<T> &singleton = class_singleton::instance(isolate);
+		if (singleton.auto_reference())
+			return find_or_reference(isolate, ext);
+		else if (singleton.auto_import())
+			return find_or_import(isolate, ext);
+
+		return find_object(isolate, ext);
+	}
+
 	/// Create JavaScript object which references externally created C++ class.
 	/// It will not take ownership of the C++ pointer.
 	static v8::Handle<v8::Object> reference_external(v8::Isolate* isolate, T* ext)
@@ -800,6 +898,40 @@ public:
 	static v8::Handle<v8::Object> import_external(v8::Isolate* isolate, T* ext)
 	{
 		return class_singleton::instance(isolate).wrap_object(ext);
+	}
+
+	//tries to find the object first if not found it references the object
+	static v8::Handle<v8::Object> find_or_reference(v8::Isolate* isolate, T* ext)
+	{
+		detail::class_singleton<T> &singleton = class_singleton::instance(isolate);
+		v8::Handle<v8::Object> obj = singleton.find_object(ext);
+		if (obj.IsEmpty())
+		{
+			obj = singleton.wrap_external_object(ext);
+		}
+		return obj;
+	}
+
+	//tries to find the object first if not found it imports the object
+	static v8::Handle<v8::Object> find_or_import(v8::Isolate* isolate, T* ext)
+	{
+		detail::class_singleton<T> &singleton = class_singleton::instance(isolate);
+		v8::Handle<v8::Object> obj = singleton.find_object(ext);
+		if (obj.IsEmpty())
+		{
+			obj = singleton.wrap_object(ext);
+		}
+		return obj;
+	}
+
+	static void insert_reference_external(v8::Isolate* isolate, v8::Handle<v8::Object> &obj, T* ext)
+	{
+		return class_singleton::instance(isolate).insert_external_object(obj, ext);
+	}
+
+	static void import_external(v8::Isolate* isolate, v8::Handle<v8::Object> &obj, T* ext)
+	{
+		return class_singleton::instance(isolate).insert_object(obj, ext);
 	}
 
 	/// Get wrapped object from V8 value, may return nullptr on fail.
@@ -838,11 +970,11 @@ public:
 		{
 			class_function_template()->SetClassName(v8pp::to_v8(isolate, name));
 
-			/*if (!has_handler)
+			if (!has_handler)
 			{
 				v8pp::debug::set_debug_handler(js_function_template()->PrototypeTemplate(), name, isolate);
 				v8pp::debug::set_debug_handler(class_function_template()->PrototypeTemplate(), name, isolate);
-			}*/
+			}
 
 			class_name_set = true;
 

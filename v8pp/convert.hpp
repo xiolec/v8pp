@@ -670,6 +670,11 @@ struct convert<T*, typename std::enable_if<is_wrapped_class<T>::value>::type>
 	{
 		return class_<class_type>::find_object(isolate, value);
 	}
+
+	static to_type to_v8(v8::Isolate* isolate, T * value)
+	{
+		return class_<class_type>::convert(isolate, value);
+	}
 };
 
 template<typename T>
@@ -734,6 +739,12 @@ inline v8::Handle<v8::String> to_v8(v8::Isolate* isolate, wchar_t const* str, in
 
 template<typename T>
 typename convert<T>::to_type to_v8(v8::Isolate* isolate, T const& value)
+{
+	return convert<T>::to_v8(isolate, value);
+}
+
+template<typename T>
+typename convert<T>::to_type to_v8(v8::Isolate* isolate, T & value)
 {
 	return convert<T>::to_v8(isolate, value);
 }

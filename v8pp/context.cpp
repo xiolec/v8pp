@@ -179,7 +179,10 @@ struct array_buffer_allocator : v8::ArrayBuffer::Allocator
 
 static array_buffer_allocator array_buffer_allocator_;
 
-context::context(v8::Isolate* isolate, int global_fields, v8::NamedPropertyHandlerConfiguration *config, bool allow_java_run)
+context::context(v8::Isolate* isolate, 
+	context_callback create_global,
+	global_object_callback wrap_global,
+	bool allow_java_run)
 {
 	own_isolate_ = (isolate == nullptr);
 	if (own_isolate_)
@@ -195,32 +198,34 @@ context::context(v8::Isolate* isolate, int global_fields, v8::NamedPropertyHandl
 	v8::HandleScope scope(isolate_);
 
 	v8::Handle<v8::Value> data = detail::set_external_data(isolate_, this);
-	v8::Handle<v8::FunctionTemplate> func_temp = v8::FunctionTemplate::New(isolate_);
-	if (global_fields != 0)
-	{
-		func_temp->InstanceTemplate()->SetInternalFieldCount(global_fields);
-		//global->SetInternalFieldCount(global_fields);
-	}
-	const char *name = "global";
-	func_temp->SetClassName(v8pp::to_v8(isolate, name));
-	v8::Handle<v8::ObjectTemplate> global = v8::ObjectTemplate::New(isolate_, func_temp);
 
-	
-	if (config != NULL)
-		global->SetHandler(*config);
+	v8::Handle<v8::ObjectTemplate> global;
+	v8::Handle<v8::Value> global_obj = v8::Handle<v8::Value>();
+	if (!create_global)
+	{
+		const char *name = "global";
+		v8::Handle<v8::FunctionTemplate> func_temp = v8::FunctionTemplate::New(isolate_);
+		func_temp->SetClassName(v8pp::to_v8(isolate, name));
+		global = v8::ObjectTemplate::New(isolate_, func_temp);
+	}
+	else
+	{
+		create_global(isolate_, global, global_obj);
+		//if (global->InternalFieldCount() == 0)
+			//global->SetInternalFieldCount(2);
+	}
 
 	if (allow_java_run)
 	{
 		global->Set(isolate_, "require", v8::FunctionTemplate::New(isolate_, context::load_module, data));
 		global->Set(isolate_, "run", v8::FunctionTemplate::New(isolate_, context::run_file, data));
 	}
-	//else
-	//{
-		//global->Set(isolate_, "eval", v8::FunctionTemplate::New(isolate_, context::run_source, data));
-		//global->Set(isolate_, "execScript", v8::FunctionTemplate::New(isolate_, context::run_source, data));
-	//}
 
-	v8::Handle<v8::Context> impl = v8::Context::New(isolate_, nullptr, global);
+	v8::Handle<v8::Context> impl = v8::Context::New(isolate_, nullptr, global, global_obj);
+
+	int n_feilds = v8::Handle<v8::Object>::Cast(impl->Global()->GetPrototype())->InternalFieldCount();
+	if (wrap_global)
+		wrap_global(isolate_, v8::Handle<v8::Object>::Cast(impl->Global()->GetPrototype()));
 	
 	if (own_isolate_)
 		impl->Enter();
@@ -254,9 +259,9 @@ context::~context()
 
 		if (singletons)
 		{
-			std::string const v8_flags = "--expose_gc";
-			v8::V8::SetFlagsFromString(v8_flags.data(), (int)v8_flags.length());
-			isolate_->RequestGarbageCollectionForTesting(v8::Isolate::GarbageCollectionType::kFullGarbageCollection);
+			//std::string const v8_flags = "--expose_gc";
+			//v8::V8::SetFlagsFromString(v8_flags.data(), (int)v8_flags.length());
+			//isolate_->RequestGarbageCollectionForTesting(v8::Isolate::GarbageCollectionType::kFullGarbageCollection);
 
 			
 			for (size_t x = 0; x < singletons->size(); x++)
@@ -307,7 +312,7 @@ void context::set_security_token(context &give_secure)
 context& context::set(char const* name, v8::Handle<v8::Value> value)
 {
 	v8::HandleScope scope(isolate_);
-	to_local(isolate_, impl_)->Global()->Set(to_v8(isolate_, name), value);
+	global_prototype()->Set(to_v8(isolate_, name), value);
 	return *this;
 }
 
@@ -316,9 +321,6 @@ context& context::set(char const* name, context &other_context)
 	v8::HandleScope scope(isolate_);
 
 	global()->Set(to_v8(isolate_, name), other_context.global());
-
-	//to_local(isolate_, impl_)->Global()->Set(to_v8(isolate_, name), 
-	//										to_local(other_context.isolate(), other_context.impl_)->Global());
 
 	return *this;
 }
