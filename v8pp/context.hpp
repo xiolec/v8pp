@@ -20,7 +20,7 @@
 
 namespace v8pp {
 	typedef std::function<void(v8::Isolate*, v8::Local<v8::ObjectTemplate>&, v8::Local<v8::Value>&)> context_callback;
-	typedef std::function<void(v8::Isolate*, v8::Local<v8::Object>&)> global_object_callback;
+	typedef std::function<void(v8::Isolate*, v8::Handle<v8::Context>&)> global_object_callback;
 
 	class module;
 
@@ -31,22 +31,43 @@ namespace v8pp {
 	class context
 	{
 	public:
+		//////////////////////////////////////////////////////////////////////////
 		///
-		/// Create_global gives the isolate and takes the objectTemplate and Value as returns
-		/// Object template is the template for the global object
-		///	The value is the object itself
+		/// Create_global gives the isolate and takes the objectTemplate and Value 
+		/// as returns. Object template is the template for the global object. The 
+		///	value is the old global object
 		///		- the object is reset to the default value when used on context creation
-		///	For the value send the global object of the previous context. or send an empty object and a new object will be created
-		///		- when the new object is created insert the pointers into that object using the global_object_callback function
 		///
-		/// Warning: can not create new instances in the callback function. Can only create the definitions.
-		///			So, can not create modules that have sub modules. As that would create an instance of the sub module.
+		///	For the Object send the global object of the previous context. or send an 
+		///	empty object and a new object will be created
+		///		- when the new object is created insert the pointers into that object 
+		///		using the wrap_global call back. -- insert_reference_external()
+		///		- This call back is also good for setting of the default values for
+		///		the new context global object
 		///
+		/// Warning: can not create new instances in the callback function. Can only 
+		///			 create the definitions. So, can not create modules that have sub 
+		///			 modules. As that would create an instance of the sub module.
+		///
+		/// Warning: can not add instances of v8 objects to the template object after 
+		///			 context is created if template object is going to be reused to
+		///			 create another context.
+		///				- Add them to the global object itself
+		/// 
+		//////////////////////////////////////////////////////////////////////////
 		explicit context(v8::Isolate* isolate = nullptr,
 			context_callback create_global = context_callback(),
 			global_object_callback wrap_global = global_object_callback(),
 			bool allow_java_run = true);
 		~context();
+
+		/// Prevents clean up of the isolate if the isolate is removed before deleting the context
+		/// Returns nullptr if the isolate was not owned by this context
+		v8::Isolate *detach_isolate();
+
+		/// Gives the isolate back so that the isolate is cleaned up when context is deleted
+		/// Returns false if failed to take the isolate
+		bool attach_isolate();
 
 		void set_security_token(int value);
 		void set_security_token(const char *value);
@@ -130,6 +151,8 @@ namespace v8pp {
 		bool Delete(uint32_t index);
 
 		void ReportException(v8::TryCatch* try_catch);
+
+		v8::Local<v8::Context> get_context();
 	private:
 		bool own_isolate_;
 		v8::Isolate* isolate_;

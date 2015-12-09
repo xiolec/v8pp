@@ -47,6 +47,11 @@ namespace v8pp
 	{
 	public:
 		ValueIsolate(v8::Local<v8::Value> &value, v8::Isolate *isolate);
+		// creates an empty object
+		//	 true = null object
+		ValueIsolate(bool null_value, v8::Isolate *isolate);
+		//empty value
+		ValueIsolate();
 		~ValueIsolate();
 		
 		v8::Local<v8::Value> get_value() const;

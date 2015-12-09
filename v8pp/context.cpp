@@ -211,8 +211,6 @@ context::context(v8::Isolate* isolate,
 	else
 	{
 		create_global(isolate_, global, global_obj);
-		//if (global->InternalFieldCount() == 0)
-			//global->SetInternalFieldCount(2);
 	}
 
 	if (allow_java_run)
@@ -220,16 +218,40 @@ context::context(v8::Isolate* isolate,
 		global->Set(isolate_, "require", v8::FunctionTemplate::New(isolate_, context::load_module, data));
 		global->Set(isolate_, "run", v8::FunctionTemplate::New(isolate_, context::run_file, data));
 	}
-
+	
 	v8::Handle<v8::Context> impl = v8::Context::New(isolate_, nullptr, global, global_obj);
 
-	int n_feilds = v8::Handle<v8::Object>::Cast(impl->Global()->GetPrototype())->InternalFieldCount();
-	if (wrap_global)
-		wrap_global(isolate_, v8::Handle<v8::Object>::Cast(impl->Global()->GetPrototype()));
+	//int n_feilds = v8::Handle<v8::Object>::Cast(impl->Global()->GetPrototype())->InternalFieldCount();
 	
-	if (own_isolate_)
-		impl->Enter();
+	impl->Enter();
+
+	if (wrap_global)
+		wrap_global(isolate_, impl);//v8::Handle<v8::Object>::Cast(impl->Global()->GetPrototype()));
+
+	if (!own_isolate_)
+		impl->Exit();
+
 	impl_.Reset(isolate_, impl);
+}
+
+v8::Isolate *context::detach_isolate()
+{
+	if (!own_isolate_)
+		return nullptr;
+
+	own_isolate_ = false;
+	get_context()->Exit();
+	return isolate_;
+}
+
+bool context::attach_isolate()
+{
+	if (own_isolate_)
+		return false;
+
+	own_isolate_ = true;
+	get_context()->Enter();
+	return true;
 }
 
 context::~context()
@@ -288,6 +310,11 @@ context::~context()
 		isolate_->Exit();
 		isolate_->Dispose();
 	}
+}
+
+v8::Local<v8::Context> context::get_context()
+{
+	return to_local(isolate_, impl_);
 }
 
 void context::set_security_token(const char *value)
@@ -353,7 +380,7 @@ void context::execPrintScript(std::string const& source, std::string const& file
 
 v8::Handle<v8::Value> context::run_script(std::string const& source, std::string const& filename, bool report_exception)
 {
-	//v8::EscapableHandleScope scope(isolate_);
+	v8::EscapableHandleScope scope(isolate_);
 	if (!own_isolate_)
 		to_local(isolate_, impl_)->Enter();
 	
@@ -385,8 +412,7 @@ v8::Handle<v8::Value> context::run_script(std::string const& source, std::string
 
 	if (!own_isolate_)
 		to_local(isolate_, impl_)->Exit();
-	return result;
-	//return scope.Escape(result);
+	return scope.Escape(result);
 }
 
 void context::ReportException(v8::TryCatch* try_catch)

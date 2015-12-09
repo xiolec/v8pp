@@ -68,7 +68,7 @@ public:
 
 	bool cast(void*& ptr, type_index type) const
 	{
-		if (type == type_)
+		if (type == type_ || !ptr)
 		{
 			return true;
 		}
@@ -98,10 +98,26 @@ public:
 	}
 
 	template<typename T>
-	void add_object(T* object, persistent<v8::Object>&& handle)
+	void add_object(T* object, persistent<v8::Object>&& handle, bool destroy = false)
 	{
 		assert(objects_.find(object) == objects_.end() && "duplicate object");
-		objects_.emplace(object, std::move(handle));
+		objects_.emplace(object, std::make_pair(std::move(handle), destroy));
+	}
+
+	template<typename T>
+	void replace_add_object(T* object, persistent<v8::Object>&& handle, bool destroy = false)
+	{
+		auto it = objects_.find(object);
+		if (it != objects_.end())
+		{
+			it->second.first.Reset();
+			it->second.first = std::move(handle);
+			it->second.second = destroy;
+		}
+		else
+		{
+			add_object(object, std::move(handle), destroy);
+		}
 	}
 
 	template<typename T>
@@ -111,8 +127,8 @@ public:
 		assert(objects_.find(object) != objects_.end() && "no object");
 		if (it != objects_.end())
 		{
-			it->second.Reset();
-			if (destroy)
+			it->second.first.Reset();
+			if ((destroy) && (it->second.second))
 			{
 				destroy(isolate, object);
 			}
@@ -125,8 +141,8 @@ public:
 	{
 		for (auto& object : objects_)
 		{
-			object.second.Reset();
-			if (destroy)
+			object.second.first.Reset();
+			if ((destroy) && (object.second.second))
 			{
 				destroy(isolate, static_cast<T*>(object.first));
 			}
@@ -139,7 +155,7 @@ public:
 		auto it = objects_.find(const_cast<void*>(object));
 		if (it != objects_.end())
 		{
-			return to_local(isolate, it->second);
+			return to_local(isolate, it->second.first);
 		}
 
 		v8::Local<v8::Object> result;
@@ -155,7 +171,7 @@ public:
 	{
 		for (auto& object : objects_)
 		{
-			object.second.Reset(); //should have already been released 
+			object.second.first.Reset(); //should have already been released 
 		}
 	}
 protected:
@@ -165,12 +181,14 @@ protected:
 		return next_index++;
 	}
 
-	std::unordered_map<void*, persistent<v8::Object>>::iterator objects_begin()
+	using objects_it = std::unordered_map<void*, std::pair<persistent<v8::Object>, bool>>::iterator;
+
+	objects_it objects_begin()
 	{
 		return objects_.begin();
 	}
 
-	std::unordered_map<void*, persistent<v8::Object>>::iterator objects_end()
+	objects_it objects_end()
 	{
 		return objects_.end();
 	}
@@ -192,7 +210,7 @@ private:
 	std::vector<base_class_info> bases_;
 	std::vector<class_info*> derivatives_;
 
-	std::unordered_map<void*, persistent<v8::Object>> objects_;
+	std::unordered_map<void*, std::pair<persistent<v8::Object>, bool>> objects_;
 };
 
 template<typename T>
@@ -279,43 +297,21 @@ private:
 
 		}
 
-		class_info::add_object(object, std::move(pobj));
+		class_info::add_object(object, std::move(pobj), destroy_after);
 
 		return scope.Escape(obj);
 	}
 
-	void insert_into_v8_object(T* object, v8::Handle<v8::Object> &obj, bool destroy_after)
+	void insert_into_v8_object(T* object, v8::Handle<v8::Context> &obj)
 	{
-		//class_function_template()->GetFunction()->NewInstance();
-		obj->SetAlignedPointerInInternalField(0, object);
-		obj->SetAlignedPointerInInternalField(1, this);
+		v8::Local<v8::Object>::Cast(obj->Global()->GetPrototype())->SetAlignedPointerInInternalField(0, object);
+		v8::Local<v8::Object>::Cast(obj->Global()->GetPrototype())->SetAlignedPointerInInternalField(1, this);
 
-		set_object_on_base(obj, object, object_type_selector<T>());
+		set_object_on_base(obj->Global(), object, object_type_selector<T>());
 
-		persistent<v8::Object> pobj(isolate_, obj);
-		if (destroy_after)
-		{
-			pobj.SetWeak(object,
-				[](v8::WeakCallbackData<v8::Object, T> const& data)
-			{
-				v8::Isolate* isolate = data.GetIsolate();
-				T* object = data.GetParameter();
-				instance(isolate).destroy_object(object);
-			});
-		}
-		else
-		{
-			pobj.SetWeak(object,
-				[](v8::WeakCallbackData<v8::Object, T> const& data)
-			{
-				v8::Isolate* isolate = data.GetIsolate();
-				T* object = data.GetParameter();
-				instance(isolate).template remove_object<T>(isolate, object, nullptr);
-			});
+		persistent<v8::Object> pobj(isolate_, obj->Global());
 
-		}
-
-		class_info::add_object(object, std::move(pobj));
+		class_info::replace_add_object(object, std::move(pobj), false);
 	}
 
 
@@ -416,12 +412,12 @@ public:
 		return wrap(object, true);
 	}
 
-	void insert_external_object(v8::Handle<v8::Object> &obj, T* object)
+	void insert_external_object(v8::Local<v8::Context> &obj, T* object)
 	{
-		return insert_into_v8_object(object, obj, false);
+		return insert_into_v8_object(object, obj);
 	}
 
-	void insert_object(v8::Handle<v8::Object> &obj, T* object)
+	void insert_object(v8::Local<v8::Context> &obj, T* object)
 	{
 		return insert_into_v8_object(object, obj, true);
 	}
@@ -555,6 +551,12 @@ public:
 		return *this;
 	}
 
+	class_& set(char const* name, v8::Local<v8::Value> value)
+	{
+		class_singleton_.class_function_template()->PrototypeTemplate()->Set(isolate(), name, value);
+		return *this;
+	}
+
 	///
 	/// Probably can't do this unless the context is created. So cant be set for the global object instance until
 	///	after the context is created.
@@ -562,10 +564,8 @@ public:
 	template<typename T>
 	class_& set(char const* name, class_<T>& cl)
 	{
-		v8::HandleScope scope(isolate_);
-		cl.set_class_name(name, isolate_);
-		class_singleton_.class_function_template()->PrototypeTemplate()->Set(isolate_, name, cl.js_function_template()->GetFunction());
-		return *this;
+		cl.set_class_name(name, isolate());
+		return set(name, cl.js_function_template()->GetFunction());
 	}
 
 	/// Set C++ class member function
@@ -587,7 +587,7 @@ public:
 		set(char const *name, Function func, bool dont_enum = false)
 	{
 		v8::PropertyAttribute const prop_attrs = v8::PropertyAttribute((dont_enum ? v8::DontEnum : v8::None));
-		class_singleton_.js_function_template()->Set(v8pp::to_v8(isolate(), name),
+		class_singleton_.js_function_template()->PrototypeTemplate()->Set(v8pp::to_v8(isolate(), name),
 			wrap_function_template(isolate(), func), prop_attrs);
 		return *this;
 	}
@@ -924,7 +924,7 @@ public:
 		return obj;
 	}
 
-	static void insert_reference_external(v8::Isolate* isolate, v8::Handle<v8::Object> &obj, T* ext)
+	static void insert_reference_external(v8::Isolate* isolate, v8::Handle<v8::Context> &obj, T* ext)
 	{
 		return class_singleton::instance(isolate).insert_external_object(obj, ext);
 	}
@@ -969,7 +969,7 @@ public:
 		if (!class_name_set)
 		{
 			class_function_template()->SetClassName(v8pp::to_v8(isolate, name));
-
+			
 			if (!has_handler)
 			{
 				v8pp::debug::set_debug_handler(js_function_template()->PrototypeTemplate(), name, isolate);

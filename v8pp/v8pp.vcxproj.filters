@@ -33,5 +33,6 @@
     <ClInclude Include="any_object.h" />
     <ClInclude Include="any_object_hidden.h" />
     <ClInclude Include="isolate_watcher.h" />
+    <ClInclude Include="v8_helper_class.h" />
   </ItemGroup>
 </Project>

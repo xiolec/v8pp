@@ -125,6 +125,21 @@ namespace v8pp
 		_d.reset(new ValueIsolate::data_object(value, isolate));
 	}
 
+	ValueIsolate::ValueIsolate(bool null_or_undefined, v8::Isolate *isolate)
+	{
+		v8::Local<v8::Value> value;
+		if (isolate != nullptr)
+			if (null_or_undefined)
+				value = v8::Null(isolate);
+
+		_d.reset(new ValueIsolate::data_object(value, isolate));
+	}
+
+	ValueIsolate::ValueIsolate()
+	{
+		_d.reset(new ValueIsolate::data_object(v8::Local<v8::Value>(), nullptr));
+	}
+
 	v8::Local<v8::Value> ValueIsolate::get_value() const
 	{
 		return _d->_value;

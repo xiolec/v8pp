@@ -49,6 +49,7 @@
     <ClInclude Include="module.hpp" />
     <ClInclude Include="object.hpp" />
     <ClInclude Include="reference_tracker.h" />
+    <ClInclude Include="v8_helper_class.h" />
     <ClInclude Include="v8_object_base.h" />
     <ClInclude Include="property.hpp" />
     <ClInclude Include="throw_ex.hpp" />
